@@ -1,0 +1,62 @@
+use strict;
+use warnings;
+use diagnostics;
+
+use Getopt::Long;
+
+my $param_platforms;
+my %hPlatforms;
+GetOptions ("p=s" => \$param_platforms);
+
+# some prefer to use () or {}
+($param_platforms) =~ s-\s+--g;
+($param_platforms) =~ s-\=-:-g;
+($param_platforms) =~ s-\{|\(-[-g;
+($param_platforms) =~ s-\}|\)-]-g;
+
+my %checkDuplicateRefPlatforms;
+my %checkDuplicateNewPlatforms;
+foreach my $key_list (split ';' , $param_platforms) {
+	my ($ref_platform,$tmp_platforms) = $key_list =~ /^\[(.+?)\:(.+?)\]$/i;
+	if( ! defined $checkDuplicateRefPlatforms{$ref_platform} ) {
+		$checkDuplicateRefPlatforms{$ref_platform} = 1 ;
+	}  else  {
+		die "ERROR : $ref_platform already listed: $!";
+	}
+	my @new_platforms = split ',' , $tmp_platforms ;
+	my $variant = $ref_platform;
+	my $flag = 0;
+	foreach my $platform (@new_platforms) {
+		if($platform =~ /\|(.+?)$/i) {
+			$variant = $1;
+			$flag = 1 ;
+			last;
+		}
+	}
+	if($flag == 1) {
+		my $last_elem = pop @new_platforms;
+		($last_elem) =~ s-\|.+?$--i;
+		push @new_platforms , $last_elem ;
+	}
+	foreach my $platform (@new_platforms) {
+		if( ( ! defined $checkDuplicateNewPlatforms{$platform} )
+		&&  ( ! defined $checkDuplicateRefPlatforms{$platform} ) ) {
+			$checkDuplicateNewPlatforms{$platform} = 1 ;
+		}  else  {
+			die "ERROR : $platform already listed: $!";
+		}
+	}
+	push @{$hPlatforms{$ref_platform}{variant}} , $variant;
+	push @{$hPlatforms{$ref_platform}{new_platforms}} , @new_platforms;
+}
+
+foreach my $ref_platform (sort keys %hPlatforms) {
+	print $ref_platform , "\n";
+	foreach my $elem (sort keys %{$hPlatforms{$ref_platform}} ) {
+		print "\t" , $elem , "\n";
+		foreach my $new_platform (sort @{$hPlatforms{$ref_platform}{$elem}} ) {
+			print "\t\t" , $new_platform , "\n";
+		}
+	}
+}
+print "\n";
