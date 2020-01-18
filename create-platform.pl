@@ -10,8 +10,8 @@ use Carp qw(cluck confess); # to use instead of (warn die)
 
 # for the script itself
 use English qw( -no_match_vars ) ;
-use autodie;
 use Fatal qw(open close);
+use autodie;
 use Getopt::Long;
 use File::Copy;
 use File::Find;
@@ -82,7 +82,10 @@ if($opt_help || ! $options_parse_status) {
 ##############################################################################
 ##### inits & checks
 $current_dir          = $FindBin::Bin;
-$global_ref_platform ||= "linuxx86_64" ; # use linuxx86_64 by default
+if( ! $global_ref_platform) {
+    # use linuxx86_64 by default
+    $global_ref_platform = 'linuxx86_64';
+}
 
 if($param_create_platforms && $param_delete_platforms) {
     confess "ERROR : options '-cp' & '-dp' cannot be used together : $ERRNO";
@@ -114,7 +117,7 @@ if($param_create_platforms) {
         print "\nreference     : " , $ref_platform , "\n";
         local $ENV{REF_PLATFORM} = $ref_platform;
         local $ENV{variant}      = @{$h_create_platforms{$ref_platform}{variant}}[0];
-        print "variant       : ", $ENV{variant} , "\n";
+        print qq{variant       : $ENV{variant}\n};
         find(\&getlist_template_files, $current_dir);
         foreach my $elem (sort keys %{$h_create_platforms{$ref_platform}} ) {
             next if($elem =~ m/^variant$/ixms);
@@ -160,20 +163,19 @@ sub get_property_files {
     if( $File::Find::name !~ m/[.]properties$/ixms )   { return }  # ensure file is a .properties file
     if( $File::Find::name =~ m/type.properties$/ixms ) { return }  # skip this special file, managed later
     my $file_handle;
-    if(open $file_handle , q{<} , "$File::Find::name") {
-        my $flag = 0 ;
-        my $this_platform_to_delete = $ENV{PLATFORM_TBD};
-        while(<$file_handle>) {
-                if( $ARG =~ m/buildruntime\=\"$this_platform_to_delete\"/xms ) {
-                    $flag = 1;
-                    last;
-                }
-            }
-        close $file_handle;
-        if($flag==1) {
-            print "file to delete : $File::Find::name\n";
-            unlink "$File::Find::name" or cluck "WARNING : cannot delete $File::Find::name : $ERRNO";
+    my $flag = 0 ;
+    my $this_platform_to_delete = $ENV{PLATFORM_TBD};
+    open $file_handle , q{<} , "$File::Find::name" or confess "ERROR : cannot open $File::Find::name : $ERRNO";
+    while(<$file_handle>) {
+        if( $ARG =~ m/buildruntime\=\"$this_platform_to_delete\"/xms ) {
+            $flag = 1;
+            last;
         }
+    }
+    close $file_handle;
+    if($flag==1) {
+        print "file to delete : $File::Find::name\n";
+        unlink "$File::Find::name" or cluck "WARNING : cannot delete $File::Find::name : $ERRNO";
     }
     return;
 }
@@ -333,7 +335,7 @@ sub delete_platform_in_type_file {
         my $new_file_handle;
         if(open $new_file_handle , q{>} , "$current_dir/$this_type_property_file.new") {
             while(<$file_handle>) {
-                if($ARG =~ m/\.$delete_platform\./xms) {
+                if($ARG =~ m/[.]$delete_platform[.]/xms) {
                     next ;
                 }
                 print {$new_file_handle} "$ARG";
