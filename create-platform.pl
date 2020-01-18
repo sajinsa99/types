@@ -182,14 +182,14 @@ sub get_property_files {
 
 sub check_duplicates {
     ($param_create_platforms) =~ s/\s+//gxms;      # if people want to add spaces for more readable
-    ($param_create_platforms) =~ s/\=/:/gxms;      # if people prefer '=' instead of ':'
+    ($param_create_platforms) =~ s/[=]/:/gxms;     # if people prefer '=' instead of ':'
     ($param_create_platforms) =~ s/[\(\{]/[/gxms;  # if people prefer () or {}
     ($param_create_platforms) =~ s/[\)\}]/]/gxms;  # if people prefer () or {}
 
     my %check_duplicate_new_platforms;
     foreach my $key_list (split $SEMICOLON , $param_create_platforms) {
         my ($ref_platform,$tmp_platforms);
-        ($ref_platform,$tmp_platforms) = $key_list =~ m/^\[(.+?)\:(.+?)\]$/ixms;
+        ($ref_platform,$tmp_platforms) = $key_list =~ m/^[[](.+?)[:](.+?)[]]$/ixms;
         if( ! defined $ref_platform) {
             $ref_platform    = $global_ref_platform;
             ($tmp_platforms) = $key_list =~ m/^\[\:(.+?)\]$/ixms;
