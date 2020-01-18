@@ -281,7 +281,7 @@ sub update_type_file {
     my ($this_platform, $this_type_property_file) = @ARG ;
     my $this_variant = $ENV{variant};
     my $lines_to_add =  "\n" .
-"additional.variant.$this_platform.buildruntime=$this_platform" .
+"additional.variant.$this_platform.buildruntime=$this_platform\n" .
 "additional.variant.$this_platform.buildoptions=-V platform\=$this_variant -V mode\=opt".
 "\n";
     my $ref_property_file = "$current_dir/$this_type_property_file";
