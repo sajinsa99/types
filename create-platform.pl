@@ -192,7 +192,7 @@ sub check_duplicates {
         ($ref_platform,$tmp_platforms) = $key_list =~ m/^[[](.+?)[:](.+?)[]]$/ixms;
         if( ! defined $ref_platform) {
             $ref_platform    = $global_ref_platform;
-            ($tmp_platforms) = $key_list =~ m/^\[\:(.+?)\]$/ixms;
+            ($tmp_platforms) = $key_list =~ m/^[\[\:](.+?)[\]]$/ixms;
         }
         my @new_platforms = split $COMMA , $tmp_platforms ;
         # search variant
