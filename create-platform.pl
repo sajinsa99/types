@@ -189,10 +189,12 @@ sub check_duplicates {
     my %check_duplicate_new_platforms;
     foreach my $key_list (split $SEMICOLON , $param_create_platforms) {
         my ($ref_platform,$tmp_platforms);
-        ($ref_platform,$tmp_platforms) = $key_list =~ m/^[[](.+?)[:](.+?)[]]$/ixms;
+        ($ref_platform,$tmp_platforms) = $key_list =~ m/^[\[](.+?)[:](.+?)[\]]$/ixms;
+        
         if( ! defined $ref_platform) {
             $ref_platform    = $global_ref_platform;
-            ($tmp_platforms) = $key_list =~ m/^[\[\:](.+?)[\]]$/ixms;
+            ($tmp_platforms) = $key_list =~ m/^[[:](.+?)[\]]$/ixms;
+            ($tmp_platforms) =~ s/[:]//xms;
         }
         my @new_platforms = split $COMMA , $tmp_platforms ;
         # search variant
