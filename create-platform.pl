@@ -199,7 +199,7 @@ sub check_duplicates {
         my $variant       = $ref_platform;
         my $flag          = 0;
         foreach my $platform (@new_platforms) {
-            if($platform =~ m/\|(.+?)$/ixms) {
+            if($platform =~ m/[|](.+?)$/ixms) {
                 $variant = $1;
                 $flag    = 1 ;
                 last;
@@ -207,7 +207,7 @@ sub check_duplicates {
         }
         if($flag == 1) {
             my $last_elem = pop @new_platforms;
-            ($last_elem)  =~ s/\|.+?$//ixms;
+            ($last_elem)  =~ s/[|].+?$//ixms;
             push @new_platforms , $last_elem ;
         }
         # search duplicate
