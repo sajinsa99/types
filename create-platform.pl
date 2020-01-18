@@ -18,7 +18,7 @@ use File::Find;
 use FindBin;
 use lib $FindBin::Bin;
 
-
+our $VERSION = '1.0';
 
 ##############################################################################
 ##############################################################################
@@ -158,7 +158,6 @@ sub get_property_files {
         my $this_platform_to_delete = $ENV{PLATFORM_TBD};
         while(<$file_handle>) {
                 if( $ARG =~ m/buildruntime\=\"$this_platform_to_delete\"/xms ) {
-                    
                     $flag = 1;
                     last;
                 }
@@ -281,10 +280,10 @@ sub create_property_file {
 sub update_type_file {
     my ($this_platform, $this_type_property_file) = @ARG ;
     my $this_variant = $ENV{variant};
-    my $lines_to_add =  << 'EOV';
-additional.variant.$this_platform.buildruntime=$this_platform
-additional.variant.$this_platform.buildoptions=-V platform\=$this_variant -V mode\=opt
-EOV
+    my $lines_to_add =  "\n" .
+"additional.variant.$this_platform.buildruntime=$this_platform" .
+"additional.variant.$this_platform.buildoptions=-V platform\=$this_variant -V mode\=opt".
+"\n";
     my $ref_property_file = "$current_dir/$this_type_property_file";
     my $file_handle;
     if(open $file_handle , q{<} , "$ref_property_file") {
