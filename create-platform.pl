@@ -36,7 +36,7 @@ my %h_create_platforms          = ();
 my %list_template_files         = ();
 
 # for options/parameters
-my %all_ptions             = $EMPTY;
+my %all_ptions             = ();
 my $options_parse_status   = $EMPTY;
 my $param_create_platforms = $EMPTY;
 my $param_delete_platforms = $EMPTY;
@@ -148,16 +148,17 @@ sub git_status {
 }
 
 sub get_property_files {
-    if( ! $File::Find::name )    { return }                       # skip folders
-    if( ! -f $File::Find::name ) { return }                       # skip folders
-    if( $File::Find::name !~ m/[.]properties$/ixms )    { return } # ensure file is a .properties file
-    if( $File::Find::name =~ m/type.properties$/ixms ) { return } # skip this special file, managed later
-    my $this_platform_to_delete = $ENV{PLATFORM_TBD};
+    if( ! $File::Find::name )    { return }                        # skip folders
+    if( ! -f $File::Find::name ) { return }                        # skip folders
+    if( $File::Find::name !~ m/[.]properties$/ixms )   { return }  # ensure file is a .properties file
+    if( $File::Find::name =~ m/type.properties$/ixms ) { return }  # skip this special file, managed later
     my $file_handle;
     if(open $file_handle , q{<} , "$File::Find::name") {
         my $flag = 0 ;
+        my $this_platform_to_delete = $ENV{PLATFORM_TBD};
         while(<$file_handle>) {
-                if( $FORMAT_LINES_PER_PAGE =~ m/buildruntime\=\"$this_platform_to_delete\"/xms ) {
+                if( $ARG =~ m/buildruntime\=\"$this_platform_to_delete\"/xms ) {
+                    
                     $flag = 1;
                     last;
                 }
@@ -228,7 +229,7 @@ sub getlist_template_files {
     if(open $file_handle , q{<} , $File::Find::name) {
         my $this_ref_platform = $ENV{REF_PLATFORM};
         while(<$file_handle>) {
-            if( $FORMAT_LINES_PER_PAGE =~ m/buildruntime\=\"$this_ref_platform\"/xms ) {
+            if( $ARG =~ m/buildruntime\=\"$this_ref_platform\"/xms ) {
                 (my $final_file = $File::Find::name) =~ s/^$current_dir\///ixms; # remove the base folder, for the display.
                 (my $type = $final_file) =~ s/\/.+?$//xms;
                 push @{$list_template_files{$type}} , $final_file ;
@@ -266,7 +267,7 @@ sub create_property_file {
                 if(m/\"$this_ref_platform\"/ixms) {
                     s/\"$this_ref_platform\"/\"$this_platform\"/xms;
                 }
-                print {$new_file_handle} "$FORMAT_LINES_PER_PAGE" ;
+                print {$new_file_handle} "$ARG" ;
             }
             close $template_file_handle;
         }
@@ -290,7 +291,7 @@ EOV
         my $new_file_handle;
         if(open $new_file_handle , q{>} , "$current_dir/$this_type_property_file.new") {
             while(<$file_handle>) {
-                print {$new_file_handle} "$FORMAT_LINES_PER_PAGE";
+                print {$new_file_handle} "$ARG";
             }
             print {$new_file_handle} "\n";
             print {$new_file_handle} "$lines_to_add";
