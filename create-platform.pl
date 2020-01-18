@@ -1,3 +1,4 @@
+#!/usr/bin/env perl -w
 ##############################################################################
 ##############################################################################
 ##### declare uses
@@ -8,6 +9,9 @@ use diagnostics;
 use Carp qw(cluck confess); # to use instead of (warn die)
 
 # for the script itself
+use English qw( -no_match_vars ) ;
+use autodie;
+use Fatal qw(open close);
 use Getopt::Long;
 use File::Copy;
 use File::Find;
@@ -20,64 +24,65 @@ use lib $FindBin::Bin;
 ##############################################################################
 ##### declare vars
 
-use vars qw (
-    $currentDir
-    $commandLine
-    $referencePlatform
-    $orig_param_create_platforms
-    %hCreatePlatforms
-    %listTemplateFiles
-);
+my $COMMA                       = q{,};
+my $SEMICOLON                   = q{;};
+my $EMPTY                       = q{};
+
+my $current_dir                 = $EMPTY;
+my $command_line                = $EMPTY;
+my $global_ref_platform         = $EMPTY;
+my $orig_param_create_platforms = $EMPTY;
+my %h_create_platforms          = ();
+my %list_template_files         = ();
 
 # for options/parameters
-use vars qw (
-    %Options
-    $optionsParseStatus
-    $param_create_platforms
-    $param_delete_platforms
-    $opt_Help
-);
+my %all_ptions             = $EMPTY;
+my $options_parse_status   = $EMPTY;
+my $param_create_platforms = $EMPTY;
+my $param_delete_platforms = $EMPTY;
+my $opt_help               = $EMPTY;
+
+
 
 ##############################################################################
 ##############################################################################
 ##### declare functions
-sub gitStatus();
-sub searchPropertyFilesToDelete();
-sub checkDuplicates();
-sub createNewPlatform($);
-sub createNewPropertyFile($$);
-sub updateTypePropertyFile($$);
-sub displayHelp();
-
+sub git_status;
+sub get_property_files;
+sub check_duplicates;
+sub create_new_platform;
+sub create_property_file;
+sub update_type_file;
+sub display_help;
 
 
 ##############################################################################
 ##############################################################################
 ##### get options/parameters
-$commandLine = "$0 @ARGV";
-displayHelp() unless(@ARGV);
-%Options = (
-    "r=s"   =>\$referencePlatform,
+$command_line = "$PROGRAM_NAME @ARGV";
+if( ! @ARGV ) { display_help() }
+%all_ptions = (
+    "r=s"   =>\$global_ref_platform,
     "cp=s"  =>\$param_create_platforms,
     "dp=s"  =>\$param_delete_platforms,
-    "help"  =>\$opt_Help,
+    "help"  =>\$opt_help,
 );
 
 $Getopt::Long::ignorecase = 0;
-$optionsParseStatus = GetOptions(%Options);
-if($opt_Help || ! $optionsParseStatus) {
-    displayHelp();
+$options_parse_status = GetOptions(%all_ptions);
+if($opt_help || ! $options_parse_status) {
+    display_help();
     exit 0;
 }
 
 ##############################################################################
 ##############################################################################
 ##### inits & checks
-$currentDir          = $FindBin::Bin;
-$referencePlatform ||= "linuxx86_64" ; # use linuxx86_64 by default
+$current_dir          = $FindBin::Bin;
+$global_ref_platform ||= "linuxx86_64" ; # use linuxx86_64 by default
 
 if($param_create_platforms && $param_delete_platforms) {
-    confess "ERROR : options '-cp' & '-dp' cannot be used together : $!";
+    confess "ERROR : options '-cp' & '-dp' cannot be used together : $ERRNO";
 }
 
 
@@ -87,40 +92,40 @@ if($param_create_platforms && $param_delete_platforms) {
 ##### MAIN
 
 if($param_delete_platforms) {
-    foreach my $platform (sort split ',' , $param_delete_platforms) {
+    foreach my $platform (sort split $COMMA , $param_delete_platforms) {
         local $ENV{PLATFORM_TBD} = $platform;
-        find(\&searchPropertyFilesToDelete, $currentDir);
+        find(\&get_property_files, $current_dir);
         undef $ENV{PLATFORM_TBD} ;
     }
-    gitStatus();
+    git_status();
 }
 
 if($param_create_platforms) {
     $orig_param_create_platforms = $param_create_platforms ;
-    checkDuplicates();
-    foreach my $ref_platform (sort keys %hCreatePlatforms) {
+    check_duplicates();
+    foreach my $ref_platform (sort keys %h_create_platforms) {
         print "\nreference     : " , $ref_platform , "\n";
         local $ENV{REF_PLATFORM} = $ref_platform;
-        local $ENV{variant}      = @{$hCreatePlatforms{$ref_platform}{variant}}[0];
+        local $ENV{variant}      = @{$h_create_platforms{$ref_platform}{variant}}[0];
         print "variant       : ", $ENV{variant} , "\n";
-        find(\&getListTemplateFiles, $currentDir);
-        foreach my $elem (sort keys %{$hCreatePlatforms{$ref_platform}} ) {
-            next if($elem =~ /^variant$/i);
-            (my $display_elem = $elem) =~ s-\_- -;
+        find(\&getlist_template_files, $current_dir);
+        foreach my $elem (sort keys %{$h_create_platforms{$ref_platform}} ) {
+            next if($elem =~ m/^variant$/ixms);
+            (my $display_elem = $elem) =~ s/\_/ /xms;
             print $display_elem , " :\n";
-            foreach my $new_platform (sort @{$hCreatePlatforms{$ref_platform}{$elem}} ) {
+            foreach my $new_platform (sort @{$h_create_platforms{$ref_platform}{$elem}} ) {
                 print "\t\t" , $new_platform , "\n";
-                createNewPlatform($new_platform);
+                create_new_platform($new_platform);
             }
         }
-        %listTemplateFiles = ();
+        %list_template_files = ();
         undef $ENV{REF_PLATFORM};
         undef $ENV{variant};
     }
-    gitStatus();
+    git_status();
 }
 
-print "END of $0.\n\n";
+print "END of $PROGRAM_NAME.\n\n";
 exit 0;
 
 
@@ -128,7 +133,7 @@ exit 0;
 ##############################################################################
 ##############################################################################
 ##### functions
-sub gitStatus() {
+sub git_status {
     print "\ngit status\n";
     print   "==========\n";
     system "git status";
@@ -138,52 +143,54 @@ sub gitStatus() {
     print "\n\n";
     print "WARNING : don't forget to update as well : jobbase/extensions/typedefs/BuildRuntime.properties !!!\n\n";
     print "Now up to you to complete/revert the work.\n\n";
-    print "END of $0.\n\n";
+    print "END of $PROGRAM_NAME.\n\n";
     exit 0;
 }
 
-sub searchPropertyFilesToDelete() {
-    return unless( $File::Find::name );                 # skip folders
-    return unless( -f $File::Find::name );                 # skip folders
-    return if( $File::Find::name !~ /\.properties$/i );    # ensure file is a .properties file
-    return if( $File::Find::name =~ /type.properties$/i ); # skip this special file, managed later
+sub get_property_files {
+    if( ! $File::Find::name )    { return }                       # skip folders
+    if( ! -f $File::Find::name ) { return }                       # skip folders
+    if( $File::Find::name !~ m/[.]properties$/ixms )    { return } # ensure file is a .properties file
+    if( $File::Find::name =~ m/type.properties$/ixms ) { return } # skip this special file, managed later
     my $this_platform_to_delete = $ENV{PLATFORM_TBD};
-    my $flag = 0 ;
-    if(open my $file_handle , '<' , $File::Find::name) {
+    my $file_handle;
+    if(open $file_handle , q{<} , "$File::Find::name") {
+        my $flag = 0 ;
         while(<$file_handle>) {
-            if( $_ =~ /buildruntime\=\"$this_platform_to_delete\"/ ) {
-                $flag = 1;
-                last;
+                if( $FORMAT_LINES_PER_PAGE =~ m/buildruntime\=\"$this_platform_to_delete\"/xms ) {
+                    $flag = 1;
+                    last;
+                }
             }
-        }
         close $file_handle;
         if($flag==1) {
             print "file to delete : $File::Find::name\n";
-            unlink "$File::Find::name" or cluck "WARNING : cannot delete $File::Find::name : $!";
+            unlink "$File::Find::name" or cluck "WARNING : cannot delete $File::Find::name : $ERRNO";
         }
     }
+    return;
 }
 
-sub checkDuplicates() {
-    ($param_create_platforms) =~ s-\s+--g;     # if people want to add spaces for more readable
-    ($param_create_platforms) =~ s-\=-:-g;     # if people prefer '=' instead of ':'
-    ($param_create_platforms) =~ s-\(|\{-[-g;  # if people prefer () or {}
-    ($param_create_platforms) =~ s-\)|\}-]-g;  # if people prefer () or {}
+sub check_duplicates {
+    ($param_create_platforms) =~ s/\s+//gxms;      # if people want to add spaces for more readable
+    ($param_create_platforms) =~ s/\=/:/gxms;      # if people prefer '=' instead of ':'
+    ($param_create_platforms) =~ s/[\(\{]/[/gxms;  # if people prefer () or {}
+    ($param_create_platforms) =~ s/[\)\}]/]/gxms;  # if people prefer () or {}
 
-    my %checkDuplicateNewPlatforms;
-    foreach my $key_list (split ';' , $param_create_platforms) {
+    my %check_duplicate_new_platforms;
+    foreach my $key_list (split $SEMICOLON , $param_create_platforms) {
         my ($ref_platform,$tmp_platforms);
-        ($ref_platform,$tmp_platforms) = $key_list =~ /^\[(.+?)\:(.+?)\]$/i;
+        ($ref_platform,$tmp_platforms) = $key_list =~ m/^\[(.+?)\:(.+?)\]$/ixms;
         if( ! defined $ref_platform) {
-            $ref_platform    = $referencePlatform;
-            ($tmp_platforms) = $key_list =~ /^\[\:(.+?)\]$/i;
+            $ref_platform    = $global_ref_platform;
+            ($tmp_platforms) = $key_list =~ m/^\[\:(.+?)\]$/ixms;
         }
-        my @new_platforms = split ',' , $tmp_platforms ;
+        my @new_platforms = split $COMMA , $tmp_platforms ;
         # search variant
         my $variant       = $ref_platform;
         my $flag          = 0;
         foreach my $platform (@new_platforms) {
-            if($platform =~ /\|(.+?)$/i) {
+            if($platform =~ m/\|(.+?)$/ixms) {
                 $variant = $1;
                 $flag    = 1 ;
                 last;
@@ -191,107 +198,116 @@ sub checkDuplicates() {
         }
         if($flag == 1) {
             my $last_elem = pop @new_platforms;
-            ($last_elem)  =~ s-\|.+?$--i;
+            ($last_elem)  =~ s/\|.+?$//ixms;
             push @new_platforms , $last_elem ;
         }
         # search duplicate
         foreach my $platform (@new_platforms) {
-            if( ! defined $checkDuplicateNewPlatforms{$platform} ) {
-                $checkDuplicateNewPlatforms{$platform} = 1 ;
+            if( ! defined $check_duplicate_new_platforms{$platform} ) {
+                $check_duplicate_new_platforms{$platform} = 1 ;
             }  else  {
-                confess "\nERROR : $platform already listed in $orig_param_create_platforms : $!";
+                confess "\nERROR : $platform already listed in $orig_param_create_platforms : $ERRNO";
             }
         }
-        push @{$hCreatePlatforms{$ref_platform}{variant}} , $variant;
-        if(scalar @{$hCreatePlatforms{$ref_platform}{variant}} > 1) {
-            confess "\nERROR : there is more than 1 variant for $ref_platform in $orig_param_create_platforms : $!";
+        push @{$h_create_platforms{$ref_platform}{variant}} , $variant;
+        if(scalar @{$h_create_platforms{$ref_platform}{variant}} > 1) {
+            confess "\nERROR : there is more than 1 variant for $ref_platform in $orig_param_create_platforms : $ERRNO";
         }
-        push @{$hCreatePlatforms{$ref_platform}{new_platforms}} , @new_platforms;
+        push @{$h_create_platforms{$ref_platform}{new_platforms}} , @new_platforms;
     }
+    return;
 }
 
-sub getListTemplateFiles() {
+sub getlist_template_files {
     # search all files with buildruntime=reference_platform
-    return unless( -f $File::Find::name );                 # skip folders
-    return if( $File::Find::name !~ /\.properties$/i );    # ensure file is a .properties file
-    return if( $File::Find::name =~ /P4\_$/i );            # skip P4, should not exist but in case . . .
-    return if( $File::Find::name =~ /type.properties$/i ); # skip this special file, managed later
-    if(open my $file_handle , '<' , $File::Find::name) {
-        my $referencePlatform = $ENV{REF_PLATFORM};
+    if( ! -f $File::Find::name ) { return }                        # skip folders
+    if( $File::Find::name !~ m/[.]properties$/ixms )    { return }  # ensure file is a .properties file
+    if( $File::Find::name =~ m/P4\_$/ixms )            { return }  # skip P4, should not exist but in case . . .
+    if( $File::Find::name =~ m/type.properties$/ixms ) { return }  # skip this special file, managed later
+    my $file_handle;
+    if(open $file_handle , q{<} , $File::Find::name) {
+        my $this_ref_platform = $ENV{REF_PLATFORM};
         while(<$file_handle>) {
-            if( $_ =~ /buildruntime\=\"$referencePlatform\"/ ) {
-                (my $finalFile = $File::Find::name) =~ s-^$currentDir\/--i; # remove the base folder, for the display.
-                (my $type = $finalFile) =~ s-\/.+?$--;
-                push @{$listTemplateFiles{$type}} , $finalFile ;
+            if( $FORMAT_LINES_PER_PAGE =~ m/buildruntime\=\"$this_ref_platform\"/xms ) {
+                (my $final_file = $File::Find::name) =~ s/^$current_dir\///ixms; # remove the base folder, for the display.
+                (my $type = $final_file) =~ s/\/.+?$//xms;
+                push @{$list_template_files{$type}} , $final_file ;
                 last;
             }
         }
         close $file_handle;
     }
+    return;
 }
 
-sub createNewPlatform($) {
-    my ($this_new_platform) = @_ ;
-    foreach my $type ( sort keys %listTemplateFiles ) {
+sub create_new_platform {
+    my ($this_new_platform) = @ARG ;
+    foreach my $type ( sort keys %list_template_files ) {
         print "\t\t- $type\n";
-        foreach my $templateFile ( sort @{$listTemplateFiles{$type}} )  {
-            createNewPropertyFile($this_new_platform, $templateFile);
+        foreach my $template_file ( sort @{$list_template_files{$type}} )  {
+            create_property_file($this_new_platform, $template_file);
         }
-        if( -e "$currentDir/$type/type.properties") {
-            updateTypePropertyFile($this_new_platform , "$type/type.properties");
+        if( -e "$current_dir/$type/type.properties") {
+            update_type_file($this_new_platform , "$type/type.properties");
         }
     }
+    return;
 }
 
-sub createNewPropertyFile($$) {
-    my ($this_platform, $this_TemplateFile) = @_ ;
-    my $referencePlatform = $ENV{REF_PLATFORM};
-    (my $tmp_file = $this_TemplateFile) =~ s/\-$referencePlatform/\-$this_platform/g;
-    if(open my $newFile_handle , '>' , "$currentDir/$tmp_file") {
-        if(open my $templateFile_handle , '<' , "$currentDir/$this_TemplateFile") {
-            my $referencePlatform = $ENV{REF_PLATFORM};
-            while(<$templateFile_handle>) {
-                if(/\"$referencePlatform\"/i) {
-                    s-\"$referencePlatform\"-\"$this_platform\"-;
+sub create_property_file {
+    my ($this_platform, $this_template_file) = @ARG ;
+    my $this_ref_platform = $ENV{REF_PLATFORM};
+    (my $tmp_file = $this_template_file) =~ s/\-$this_ref_platform/\-$this_platform/gxms;
+    my $new_file_handle ;
+    if(open $new_file_handle , q{>} , "$current_dir/$tmp_file") {
+        my $template_file_handle;
+        if(open $template_file_handle , q{<} , "$current_dir/$this_template_file") {
+            while(<$template_file_handle>) {
+                if(m/\"$this_ref_platform\"/ixms) {
+                    s/\"$this_ref_platform\"/\"$this_platform\"/xms;
                 }
-                print $newFile_handle $_ ;
+                print {$new_file_handle} "$FORMAT_LINES_PER_PAGE" ;
             }
-            close $templateFile_handle;
+            close $template_file_handle;
         }
-        close $newFile_handle;
+        close $new_file_handle;
     }  else  {
-        cluck "\tWARNING : cannot create $tmp_file : $!";
+        cluck "\tWARNING : cannot create $tmp_file : $ERRNO";
     }
+    return;
 }
 
-sub updateTypePropertyFile($$) {
-    my ($this_platform, $this_typePropertyFile) = @_ ;
+sub update_type_file {
+    my ($this_platform, $this_type_property_file) = @ARG ;
     my $this_variant = $ENV{variant};
-    my $linesToAdd = "
+    my $lines_to_add =  << 'EOV';
 additional.variant.$this_platform.buildruntime=$this_platform
 additional.variant.$this_platform.buildoptions=-V platform\=$this_variant -V mode\=opt
-";
-    my $ref_property_file = "$currentDir/$this_typePropertyFile";
-    if(open my $File_handle , '<' , "$ref_property_file") {
-        if(open my $newFile_handle , '>' , "$currentDir/$this_typePropertyFile.new") {
-            while(<$File_handle>) {
-                print $newFile_handle $_;
+EOV
+    my $ref_property_file = "$current_dir/$this_type_property_file";
+    my $file_handle;
+    if(open $file_handle , q{<} , "$ref_property_file") {
+        my $new_file_handle;
+        if(open $new_file_handle , q{>} , "$current_dir/$this_type_property_file.new") {
+            while(<$file_handle>) {
+                print {$new_file_handle} "$FORMAT_LINES_PER_PAGE";
             }
-            print $newFile_handle "\n";
-            print $newFile_handle $linesToAdd;
-            close $newFile_handle;
+            print {$new_file_handle} "\n";
+            print {$new_file_handle} "$lines_to_add";
+            close $new_file_handle;
         }
-        close $File_handle;
-        rename "$currentDir/$this_typePropertyFile.new" , "$currentDir/$this_typePropertyFile"
-            or cluck "WARNING : cannot rename '$this_typePropertyFile.new' to '$this_typePropertyFile' : $!\n";
+        close $file_handle;
+        rename "$current_dir/$this_type_property_file.new" , "$current_dir/$this_type_property_file"
+            or cluck "WARNING : cannot rename '$this_type_property_file.new' to '$this_type_property_file' : $ERRNO\n";
     }
+    return;
 }
 
-sub displayHelp() {
-    print <<END_USAGE;
+sub display_help {
+    print << 'END_USAGE';
 
 [synopsis]
-$0 is a tool to create new platform (new buildruntime, aka jenkins label) in the xMake jobbase.
+$PROGRAM_NAME is a tool to create new platform (new buildruntime, aka jenkins label) in the xMake jobbase.
 It would to create *.properties files in jobbase/builds/types/<TYPE>/jobs/ .
 It is based on a reference platform (by default : linuxx86_64).
 
@@ -303,4 +319,5 @@ It is based on a reference platform (by default : linuxx86_64).
           i.e.: -dp="platform,platformb"
 
 END_USAGE
+    return;
 }
