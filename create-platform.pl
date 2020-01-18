@@ -34,6 +34,7 @@ my $global_ref_platform         = $EMPTY;
 my $orig_param_create_platforms = $EMPTY;
 my %h_create_platforms          = ();
 my %list_template_files         = ();
+my %list_type_files             = ();
 
 # for options/parameters
 my %all_ptions             = ();
@@ -52,7 +53,9 @@ sub get_property_files;
 sub check_duplicates;
 sub create_new_platform;
 sub create_property_file;
-sub update_type_file;
+sub add_new_platform_in_type_file;
+sub get_type_files;
+sub delete_platform_in_type_file;
 sub display_help;
 
 
@@ -92,9 +95,13 @@ if($param_create_platforms && $param_delete_platforms) {
 ##### MAIN
 
 if($param_delete_platforms) {
+    find(\&get_type_files, $current_dir);
     foreach my $platform (sort split $COMMA , $param_delete_platforms) {
         local $ENV{PLATFORM_TBD} = $platform;
         find(\&get_property_files, $current_dir);
+        foreach my $type_file ( sort keys %list_type_files) {
+            delete_platform_in_type_file($type_file)
+        }
         undef $ENV{PLATFORM_TBD} ;
     }
     git_status();
@@ -220,10 +227,11 @@ sub check_duplicates {
 
 sub getlist_template_files {
     # search all files with buildruntime=reference_platform
-    if( ! -f $File::Find::name ) { return }                        # skip folders
+    if( ! -f $File::Find::name ) { return }                         # skip folders
+    if( $File::Find::name =~ m/[.]git/ixms ) { return }             # skip .git folder
     if( $File::Find::name !~ m/[.]properties$/ixms )    { return }  # ensure file is a .properties file
-    if( $File::Find::name =~ m/P4\_$/ixms )            { return }  # skip P4, should not exist but in case . . .
-    if( $File::Find::name =~ m/type.properties$/ixms ) { return }  # skip this special file, managed later
+    if( $File::Find::name =~ m/P4\_$/ixms )            { return }   # skip P4, should not exist but in case . . .
+    if( $File::Find::name =~ m/type.properties$/ixms ) { return }   # skip this special file, managed later
     my $file_handle;
     if(open $file_handle , q{<} , $File::Find::name) {
         my $this_ref_platform = $ENV{REF_PLATFORM};
@@ -248,7 +256,7 @@ sub create_new_platform {
             create_property_file($this_new_platform, $template_file);
         }
         if( -e "$current_dir/$type/type.properties") {
-            update_type_file($this_new_platform , "$type/type.properties");
+            add_new_platform_in_type_file($this_new_platform , "$type/type.properties");
         }
     }
     return;
@@ -277,7 +285,7 @@ sub create_property_file {
     return;
 }
 
-sub update_type_file {
+sub add_new_platform_in_type_file {
     my ($this_platform, $this_type_property_file) = @ARG ;
     my $this_variant = $ENV{variant};
     my $lines_to_add =  "\n" .
@@ -293,6 +301,43 @@ sub update_type_file {
             }
             print {$new_file_handle} "\n";
             print {$new_file_handle} "$lines_to_add";
+            print {$new_file_handle} "\n";
+            close $new_file_handle;
+        }
+        close $file_handle;
+        rename "$current_dir/$this_type_property_file.new" , "$current_dir/$this_type_property_file"
+            or cluck "WARNING : cannot rename '$this_type_property_file.new' to '$this_type_property_file' : $ERRNO\n";
+    }
+    return;
+}
+
+sub get_type_files {
+    if( $File::Find::name =~ m/[.]git/ixms ) { return }            # skip .git folder
+    if( ! $File::Find::name )    { return }                        # skip folders
+    if( ! -f $File::Find::name ) { return }                        # skip folders
+    if( $File::Find::name !~ m/[.]properties$/ixms )   { return }  # ensure file is a .properties file
+    if( $File::Find::name =~ m/type[.]properties$/ixms ) {
+        (my $type_file = $File::Find::name) =~ s/^$current_dir\///xms;
+        $list_type_files{$type_file} = 1 ;
+        return
+    }
+    return;
+}
+
+sub delete_platform_in_type_file {
+    my ($this_type_property_file) = @ARG ;
+    my $delete_platform = $ENV{PLATFORM_TBD} ;
+    my $ref_property_file = "$current_dir/$this_type_property_file";
+    my $file_handle;
+    if(open $file_handle , q{<} , "$ref_property_file") {
+        my $new_file_handle;
+        if(open $new_file_handle , q{>} , "$current_dir/$this_type_property_file.new") {
+            while(<$file_handle>) {
+                if($ARG =~ m/\.$delete_platform\./xms) {
+                    next ;
+                }
+                print {$new_file_handle} "$ARG";
+            }
             close $new_file_handle;
         }
         close $file_handle;
