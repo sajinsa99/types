@@ -10,8 +10,8 @@ use Carp qw(cluck confess); # to use instead of (warn die)
 
 # for the script itself
 use English qw( -no_match_vars ) ;
-use Fatal qw(open close);
-use autodie;
+#use Fatal qw(open close);
+#use autodie;
 #use Getopt::Long;
 use Getopt::Long qw(:config no_ignore_case);
 use File::Copy;
@@ -71,13 +71,15 @@ if( ! @ARGV ) {
 }
 %all_ptions = (
     'r'     =>\$global_ref_platform,
+    'ap'    =>\$param_create_platforms,
     'cp'    =>\$param_create_platforms,
+    'rp'    =>\$param_delete_platforms,
     'dp'    =>\$param_delete_platforms,
     'help'  =>\$opt_help,
 );
 
 #$Getopt::Long::ignorecase = 0;
-$options_parse_status = GetOptions(\%all_ptions,'r=s', 'cp=s', 'dp=s', 'help');
+$options_parse_status = GetOptions(\%all_ptions,'r=s', 'ap=s', 'cp=s', 'rp=s', 'dp=s', 'help');
 if($opt_help || ! $options_parse_status) {
     display_help();
     exit 0;
@@ -93,7 +95,7 @@ if( ! $global_ref_platform) {
 }
 
 if($param_create_platforms && $param_delete_platforms) {
-    confess "ERROR : options '-cp' & '-dp' cannot be used together : $ERRNO";
+    confess "ERROR : options '-ap|-cp' & '-rp|-dp' cannot be used together : $ERRNO";
 }
 
 
@@ -354,16 +356,16 @@ sub display_help {
     my $display_help_message = <<"END_USAGE";
 
 [synopsis]
-$PROGRAM_NAME is a tool to create new platform (new buildruntime, aka jenkins label) in the xMake jobbase.
-It would to create *.properties files in jobbase/builds/types/<TYPE>/jobs/ .
-It is based on a reference platform (by default : linuxx86_64).
+$PROGRAM_NAME is a tool to create new platform(s) (new buildruntime, aka jenkins label),
+or to delete platform(s) in the xMake jobbase, see README.md for further details
 
 [options]
-    -h  : to display this help
-    -cp : to list of platforms to create (cannot be used with -dp)
-          there is a special syntax, please refer to the README.md for further details.
-    -dp : to list of platforms to delete (cannot be used with -cp)
-          i.e.: -dp="platformA,platformB"
+    -h      : to display this help
+    -ap|-cp : to list of platforms to create (cannot be used with -dp)
+              there is a special syntax, please follow the README.md for further details.
+    -rp|-dp : to list of platforms to delete (cannot be used with -ap|-cp)
+              i.e.: -dp="platformA,platformB" or -rp="platformA,platformB"
+              , see README.md for further details.
 
 END_USAGE
     print "$display_help_message";
