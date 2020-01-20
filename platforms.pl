@@ -32,15 +32,15 @@ my $EMPTY                       = q{};
 my $current_dir                 = $EMPTY;
 my $command_line                = $EMPTY;
 my $global_ref_platform         = $EMPTY;
-my $orig_param_create_platforms = $EMPTY;
-my %h_create_platforms          = ();
+my $orig_param_add_platforms    = $EMPTY;
+my %h_add_platforms             = ();
 my %list_template_files         = ();
 my %list_type_files             = ();
 
 # for options/parameters
 my %all_ptions             = ();
 my $options_parse_status   = $EMPTY;
-my $param_create_platforms = $EMPTY;
+my $param_add_platforms    = $EMPTY;
 my $param_delete_platforms = $EMPTY;
 my $opt_help               = $EMPTY;
 
@@ -52,7 +52,7 @@ my $opt_help               = $EMPTY;
 sub git_status;
 sub get_property_files;
 sub check_duplicates;
-sub create_new_platform;
+sub add_new_platform;
 sub create_property_file;
 sub add_new_platform_in_type_file;
 sub get_type_files;
@@ -71,15 +71,13 @@ if( ! @ARGV ) {
 }
 %all_ptions = (
     'r'     =>\$global_ref_platform,
-    'ap'    =>\$param_create_platforms,
-    'cp'    =>\$param_create_platforms,
-    'rp'    =>\$param_delete_platforms,
+    'ap'    =>\$param_add_platforms,
     'dp'    =>\$param_delete_platforms,
     'help'  =>\$opt_help,
 );
 
 #$Getopt::Long::ignorecase = 0;
-$options_parse_status = GetOptions(\%all_ptions,'r=s', 'ap=s', 'cp=s', 'rp=s', 'dp=s', 'help');
+$options_parse_status = GetOptions(\%all_ptions,'r=s', 'ap=s', 'dp=s', 'help');
 if($opt_help || ! $options_parse_status) {
     display_help();
     exit 0;
@@ -94,8 +92,8 @@ if( ! $global_ref_platform) {
     $global_ref_platform = 'linuxx86_64';
 }
 
-if($param_create_platforms && $param_delete_platforms) {
-    confess "ERROR : options '-ap|-cp' & '-rp|-dp' cannot be used together : $ERRNO";
+if($param_add_platforms && $param_delete_platforms) {
+    confess "ERROR : options '-ap' & '-dp' cannot be used together : $ERRNO";
 }
 
 
@@ -104,8 +102,34 @@ if($param_create_platforms && $param_delete_platforms) {
 ##############################################################################
 ##### MAIN
 print "\n";
+
+if($param_add_platforms) {
+    $orig_param_add_platforms = $param_add_platforms ;
+    check_duplicates();
+    print "Add mode.\n";
+    foreach my $ref_platform (sort keys %h_add_platforms) {
+        #print qq{\nreference     : $ref_platform\n};
+        local $ENV{REF_PLATFORM} = $ref_platform;
+        local $ENV{variant}      = @{$h_add_platforms{$ref_platform}{variant}}[0];
+        #print qq{variant       : $ENV{variant}\n};
+        find(\&getlist_template_files, $current_dir);
+        foreach my $elem (sort keys %{$h_add_platforms{$ref_platform}} ) {
+            next if($elem =~ m/^variant$/ixms);
+            (my $display_elem = $elem) =~ s/\_/ /xms;
+            #print "$display_elem :\n";
+            foreach my $new_platform (sort @{$h_add_platforms{$ref_platform}{$elem}} ) {
+                #print "\t\t$new_platform\n";
+                add_new_platform($new_platform);
+            }
+        }
+        %list_template_files = ();
+        undef $ENV{REF_PLATFORM};
+        undef $ENV{variant};
+    }
+}
+
 if($param_delete_platforms) {
-    print "Deletion mode.\n";
+    print "Delete mode.\n";
     find(\&get_type_files, $current_dir);
     foreach my $platform (sort split $COMMA , $param_delete_platforms) {
         local $ENV{PLATFORM_TBD} = $platform;
@@ -114,31 +138,6 @@ if($param_delete_platforms) {
             delete_platform_in_type_file($type_file)
         }
         undef $ENV{PLATFORM_TBD} ;
-    }
-}
-
-if($param_create_platforms) {
-    $orig_param_create_platforms = $param_create_platforms ;
-    check_duplicates();
-    print "Creation mode.\n";
-    foreach my $ref_platform (sort keys %h_create_platforms) {
-        #print qq{\nreference     : $ref_platform\n};
-        local $ENV{REF_PLATFORM} = $ref_platform;
-        local $ENV{variant}      = @{$h_create_platforms{$ref_platform}{variant}}[0];
-        #print qq{variant       : $ENV{variant}\n};
-        find(\&getlist_template_files, $current_dir);
-        foreach my $elem (sort keys %{$h_create_platforms{$ref_platform}} ) {
-            next if($elem =~ m/^variant$/ixms);
-            (my $display_elem = $elem) =~ s/\_/ /xms;
-            #print "$display_elem :\n";
-            foreach my $new_platform (sort @{$h_create_platforms{$ref_platform}{$elem}} ) {
-                #print "\t\t$new_platform\n";
-                create_new_platform($new_platform);
-            }
-        }
-        %list_template_files = ();
-        undef $ENV{REF_PLATFORM};
-        undef $ENV{variant};
     }
 }
 
@@ -189,13 +188,13 @@ sub get_property_files {
 }
 
 sub check_duplicates {
-    ($param_create_platforms) =~ s/\s+//gxms;      # if people want to add spaces for more readable
-    ($param_create_platforms) =~ s/[=]/:/gxms;     # if people prefer '=' instead of ':'
-    ($param_create_platforms) =~ s/[\(\{]/[/gxms;  # if people prefer () or {}
-    ($param_create_platforms) =~ s/[\)\}]/]/gxms;  # if people prefer () or {}
+    ($param_add_platforms) =~ s/\s+//gxms;      # if people want to add spaces for more readable
+    ($param_add_platforms) =~ s/[=]/:/gxms;     # if people prefer '=' instead of ':'
+    ($param_add_platforms) =~ s/[\(\{]/[/gxms;  # if people prefer () or {}
+    ($param_add_platforms) =~ s/[\)\}]/]/gxms;  # if people prefer () or {}
 
     my %check_duplicate_new_platforms;
-    foreach my $key_list (split $SEMICOLON , $param_create_platforms) {
+    foreach my $key_list (split $SEMICOLON , $param_add_platforms) {
         my ($ref_platform,$tmp_platforms);
         ($ref_platform,$tmp_platforms) = $key_list =~ m/^[\[](.+?)[:](.+?)[\]]$/ixms;
         if( ! defined $ref_platform) {
@@ -224,14 +223,14 @@ sub check_duplicates {
             if( ! defined $check_duplicate_new_platforms{$platform} ) {
                 $check_duplicate_new_platforms{$platform} = 1 ;
             }  else  {
-                confess "\nERROR : $platform already listed in $orig_param_create_platforms : $ERRNO";
+                confess "\nERROR : $platform already listed in $orig_param_add_platforms : $ERRNO";
             }
         }
-        push @{$h_create_platforms{$ref_platform}{variant}} , $variant;
-        if(scalar @{$h_create_platforms{$ref_platform}{variant}} > 1) {
-            confess "\nERROR : there is more than 1 variant for $ref_platform in $orig_param_create_platforms : $ERRNO";
+        push @{$h_add_platforms{$ref_platform}{variant}} , $variant;
+        if(scalar @{$h_add_platforms{$ref_platform}{variant}} > 1) {
+            confess "\nERROR : there is more than 1 variant for $ref_platform in $orig_param_add_platforms : $ERRNO";
         }
-        push @{$h_create_platforms{$ref_platform}{new_platforms}} , @new_platforms;
+        push @{$h_add_platforms{$ref_platform}{new_platforms}} , @new_platforms;
     }
     return;
 }
@@ -258,7 +257,7 @@ sub getlist_template_files {
     return;
 }
 
-sub create_new_platform {
+sub add_new_platform {
     my ($this_new_platform) = @ARG ;
     foreach my $type ( sort keys %list_template_files ) {
         #print "\t\t- $type\n";
@@ -356,16 +355,16 @@ sub display_help {
     my $display_help_message = <<"END_USAGE";
 
 [synopsis]
-$PROGRAM_NAME is a tool to create new platform(s) (new buildruntime, aka jenkins label),
+$PROGRAM_NAME is a tool to add new platform(s) (buildruntime, aka jenkins label),
 or to delete platform(s) in the xMake jobbase, see README.md for further details
 
 [options]
-    -h      : to display this help
-    -ap|-cp : to list of platforms to create (cannot be used with -dp)
-              there is a special syntax, please follow the README.md for further details.
-    -rp|-dp : to list of platforms to delete (cannot be used with -ap|-cp)
-              i.e.: -dp="platformA,platformB" or -rp="platformA,platformB"
-              , see README.md for further details.
+    -h  : to display this help
+    -ap : to list a set of platforms to add (cannot be used with -dp)
+          as there is a special syntax, please follow the README.md for further details.
+    -dp : to list of platforms to delete (cannot be used with -ap)
+          i.e.: -dp="platformA,platformB"
+        , see README.md for further details.
 
 END_USAGE
     print "$display_help_message";
