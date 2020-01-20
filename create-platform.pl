@@ -346,7 +346,7 @@ sub delete_platform_in_type_file {
 }
 
 sub display_help {
-    print << 'END_USAGE';
+    my $display_help_message = <<"END_USAGE";
 
 [synopsis]
 $PROGRAM_NAME is a tool to create new platform (new buildruntime, aka jenkins label) in the xMake jobbase.
@@ -358,8 +358,9 @@ It is based on a reference platform (by default : linuxx86_64).
     -cp : to list of platforms to create (cannot be used with -dp)
           there is a special syntax, please refer to the README.md for further details.
     -dp : to list of platforms to delete (cannot be used with -cp)
-          i.e.: -dp="platform,platformb"
+          i.e.: -dp="platformA,platformB"
 
 END_USAGE
+    print "$display_help_message";
     return;
 }
