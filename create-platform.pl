@@ -12,7 +12,8 @@ use Carp qw(cluck confess); # to use instead of (warn die)
 use English qw( -no_match_vars ) ;
 use Fatal qw(open close);
 use autodie;
-use Getopt::Long;
+#use Getopt::Long;
+use Getopt::Long qw(:config no_ignore_case);
 use File::Copy;
 use File::Find;
 use FindBin;
@@ -65,14 +66,14 @@ sub display_help;
 $command_line = "$PROGRAM_NAME @ARGV";
 if( ! @ARGV ) { display_help() }
 %all_ptions = (
-    "r=s"   =>\$global_ref_platform,
-    "cp=s"  =>\$param_create_platforms,
-    "dp=s"  =>\$param_delete_platforms,
-    "help"  =>\$opt_help,
+    'r'     =>\$global_ref_platform,
+    'cp'    =>\$param_create_platforms,
+    'dp'    =>\$param_delete_platforms,
+    'help'  =>\$opt_help,
 );
 
-$Getopt::Long::ignorecase = 0;
-$options_parse_status = GetOptions(%all_ptions);
+#$Getopt::Long::ignorecase = 0;
+$options_parse_status = GetOptions(\%all_ptions,'r=s', 'cp=s', 'dp=s', 'help');
 if($opt_help || ! $options_parse_status) {
     display_help();
     exit 0;
@@ -114,7 +115,7 @@ if($param_create_platforms) {
     $orig_param_create_platforms = $param_create_platforms ;
     check_duplicates();
     foreach my $ref_platform (sort keys %h_create_platforms) {
-        print "\nreference     : " , $ref_platform , "\n";
+        print qq{\nreference     : $ref_platform\n};
         local $ENV{REF_PLATFORM} = $ref_platform;
         local $ENV{variant}      = @{$h_create_platforms{$ref_platform}{variant}}[0];
         print qq{variant       : $ENV{variant}\n};
@@ -122,9 +123,9 @@ if($param_create_platforms) {
         foreach my $elem (sort keys %{$h_create_platforms{$ref_platform}} ) {
             next if($elem =~ m/^variant$/ixms);
             (my $display_elem = $elem) =~ s/\_/ /xms;
-            print $display_elem , " :\n";
+            print "$display_elem :\n";
             foreach my $new_platform (sort @{$h_create_platforms{$ref_platform}{$elem}} ) {
-                print "\t\t" , $new_platform , "\n";
+                print "\t\t$new_platform\n";
                 create_new_platform($new_platform);
             }
         }
@@ -146,10 +147,10 @@ exit 0;
 sub git_status {
     print "\ngit status\n";
     print   "==========\n";
-    system "git status";
+    system 'git status';
     print "\n\n";
     print "git --no-pager diff GIT*/type.properties\n";
-    system "git --no-pager diff GIT*/type.properties";
+    system 'git --no-pager diff GIT*/type.properties';
     print "\n\n";
     print "WARNING : don't forget to update as well : jobbase/extensions/typedefs/BuildRuntime.properties !!!\n\n";
     print "Now up to you to complete/revert the work.\n\n";
@@ -172,7 +173,7 @@ sub get_property_files {
             last;
         }
     }
-    close $file_handle;
+    close $file_handle or confess "ERROR : cannot close $file_handle : $ERRNO";
     if($flag==1) {
         print "file to delete : $File::Find::name\n";
         unlink "$File::Find::name" or cluck "WARNING : cannot delete $File::Find::name : $ERRNO";
@@ -190,7 +191,6 @@ sub check_duplicates {
     foreach my $key_list (split $SEMICOLON , $param_create_platforms) {
         my ($ref_platform,$tmp_platforms);
         ($ref_platform,$tmp_platforms) = $key_list =~ m/^[\[](.+?)[:](.+?)[\]]$/ixms;
-        
         if( ! defined $ref_platform) {
             $ref_platform    = $global_ref_platform;
             ($tmp_platforms) = $key_list =~ m/^[[:](.+?)[\]]$/ixms;
@@ -236,19 +236,18 @@ sub getlist_template_files {
     if( $File::Find::name !~ m/[.]properties$/ixms )    { return }  # ensure file is a .properties file
     if( $File::Find::name =~ m/P4\_$/ixms )            { return }   # skip P4, should not exist but in case . . .
     if( $File::Find::name =~ m/type.properties$/ixms ) { return }   # skip this special file, managed later
+    my $this_ref_platform = $ENV{REF_PLATFORM};
     my $file_handle;
-    if(open $file_handle , q{<} , $File::Find::name) {
-        my $this_ref_platform = $ENV{REF_PLATFORM};
-        while(<$file_handle>) {
-            if( $ARG =~ m/buildruntime\=\"$this_ref_platform\"/xms ) {
-                (my $final_file = $File::Find::name) =~ s/^$current_dir\///ixms; # remove the base folder, for the display.
-                (my $type = $final_file) =~ s/\/.+?$//xms;
-                push @{$list_template_files{$type}} , $final_file ;
-                last;
-            }
+    open $file_handle , q{<} , $File::Find::name or confess "ERROR : cannot open $File::Find::name : $ERRNO";
+    while(<$file_handle>) {
+        if( $ARG =~ m/buildruntime\=\"$this_ref_platform\"/xms ) {
+            (my $final_file = $File::Find::name) =~ s/^$current_dir\///ixms; # remove the base folder, for the display.
+            (my $type = $final_file) =~ s/\/.+?$//xms;
+            push @{$list_template_files{$type}} , $final_file ;
+            last;
         }
-        close $file_handle;
     }
+    close $file_handle or confess "ERROR : cannot close $file_handle : $ERRNO";
     return;
 }
 
@@ -270,22 +269,21 @@ sub create_property_file {
     my ($this_platform, $this_template_file) = @ARG ;
     my $this_ref_platform = $ENV{REF_PLATFORM};
     (my $tmp_file = $this_template_file) =~ s/\-$this_ref_platform/\-$this_platform/gxms;
-    my $new_file_handle ;
-    if(open $new_file_handle , q{>} , "$current_dir/$tmp_file") {
-        my $template_file_handle;
-        if(open $template_file_handle , q{<} , "$current_dir/$this_template_file") {
-            while(<$template_file_handle>) {
-                if(m/\"$this_ref_platform\"/ixms) {
-                    s/\"$this_ref_platform\"/\"$this_platform\"/xms;
-                }
-                print {$new_file_handle} "$ARG" ;
-            }
-            close $template_file_handle;
+    my $template_file = "$current_dir/$this_template_file";
+    my $new_file      = "$current_dir/$tmp_file";
+    my $file_handle;
+    my $new_file_handle;
+    open $file_handle     , q{<} , "$template_file" or confess "ERROR : cannot open $template_file : $ERRNO";
+    open $new_file_handle , q{>} , "$new_file"      or confess "ERROR : cannot create $new_file : $ERRNO";
+    while(<$file_handle>) {
+        if(m/\"$this_ref_platform\"/ixms) {
+            s/\"$this_ref_platform\"/\"$this_platform\"/xms;
         }
-        close $new_file_handle;
-    }  else  {
-        cluck "\tWARNING : cannot create $tmp_file : $ERRNO";
+        print {$new_file_handle} "$ARG" or confess "ERROR : cannot write in $new_file_handle : $ERRNO";
     }
+    close $new_file_handle or confess "ERROR : cannot close $new_file_handle : $ERRNO";
+    close $file_handle     or confess "ERROR : cannot close $file_handle : $ERRNO";
+
     return;
 }
 
@@ -297,21 +295,19 @@ sub add_new_platform_in_type_file {
 "additional.variant.$this_platform.buildoptions=-V platform\=$this_variant -V mode\=opt";
     my $ref_property_file = "$current_dir/$this_type_property_file";
     my $file_handle;
-    if(open $file_handle , q{<} , "$ref_property_file") {
-        my $new_file_handle;
-        if(open $new_file_handle , q{>} , "$current_dir/$this_type_property_file.new") {
-            while(<$file_handle>) {
-                print {$new_file_handle} "$ARG";
-            }
-            print {$new_file_handle} "\n";
-            print {$new_file_handle} "$lines_to_add";
-            print {$new_file_handle} "\n";
-            close $new_file_handle;
-        }
-        close $file_handle;
-        rename "$current_dir/$this_type_property_file.new" , "$current_dir/$this_type_property_file"
-            or cluck "WARNING : cannot rename '$this_type_property_file.new' to '$this_type_property_file' : $ERRNO\n";
+    my $new_file_handle;
+    open $file_handle     , q{<} , "$ref_property_file"                        or confess "ERROR : cannot open $ref_property_file : $ERRNO";
+    open $new_file_handle , q{>} , "$current_dir/$this_type_property_file.new" or confess "ERROR : cannot create $current_dir/$this_type_property_file.new : $ERRNO";
+    while(<$file_handle>) {
+        print {$new_file_handle} "$ARG"       or confess "ERROR : cannot write in $new_file_handle : $ERRNO";
     }
+    print {$new_file_handle} "\n"             or confess "ERROR : cannot write in $new_file_handle : $ERRNO";
+    print {$new_file_handle} "$lines_to_add"  or confess "ERROR : cannot write in $new_file_handle : $ERRNO";
+    print {$new_file_handle} "\n"             or confess "ERROR : cannot write in $new_file_handle : $ERRNO";
+    close $new_file_handle or confess "ERROR : cannot close $new_file_handle : $ERRNO";
+    close $file_handle     or confess "ERROR : cannot close $file_handle : $ERRNO";
+    rename "$current_dir/$this_type_property_file.new" , "$current_dir/$this_type_property_file"
+        or cluck "WARNING : cannot rename '$this_type_property_file.new' to '$this_type_property_file' : $ERRNO\n";
     return;
 }
 
@@ -333,21 +329,19 @@ sub delete_platform_in_type_file {
     my $delete_platform = $ENV{PLATFORM_TBD} ;
     my $ref_property_file = "$current_dir/$this_type_property_file";
     my $file_handle;
-    if(open $file_handle , q{<} , "$ref_property_file") {
-        my $new_file_handle;
-        if(open $new_file_handle , q{>} , "$current_dir/$this_type_property_file.new") {
-            while(<$file_handle>) {
-                if($ARG =~ m/[.]$delete_platform[.]/xms) {
-                    next ;
-                }
-                print {$new_file_handle} "$ARG";
-            }
-            close $new_file_handle;
+    my $new_file_handle;
+    open $file_handle     , q{<} , "$ref_property_file"                        or confess "ERROR : cannot open $ref_property_file : $ERRNO";
+    open $new_file_handle , q{>} , "$current_dir/$this_type_property_file.new" or confess "ERROR : cannot create $current_dir/$this_type_property_file.new : $ERRNO";
+    while(<$file_handle>) {
+        if($ARG =~ m/[.]$delete_platform[.]/xms) {
+            next ;
         }
-        close $file_handle;
-        rename "$current_dir/$this_type_property_file.new" , "$current_dir/$this_type_property_file"
-            or cluck "WARNING : cannot rename '$this_type_property_file.new' to '$this_type_property_file' : $ERRNO\n";
+        print {$new_file_handle} "$ARG" or confess "ERROR : cannot write in $new_file_handle : $ERRNO";
     }
+    close $new_file_handle              or confess "ERROR : cannot close $new_file_handle : $ERRNO";
+    close $file_handle                  or confess "ERROR : cannot close $file_handle : $ERRNO";
+    rename "$current_dir/$this_type_property_file.new" , "$current_dir/$this_type_property_file"
+        or cluck "WARNING : cannot rename '$this_type_property_file.new' to '$this_type_property_file' : $ERRNO\n";
     return;
 }
 
