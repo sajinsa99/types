@@ -64,7 +64,11 @@ sub display_help;
 ##############################################################################
 ##### get options/parameters
 $command_line = "$PROGRAM_NAME @ARGV";
-if( ! @ARGV ) { display_help() }
+if( ! @ARGV ) {
+    cluck "WARNING : no parameter/option set in command line: $ERRNO";
+    display_help();
+    exit 0;
+}
 %all_ptions = (
     'r'     =>\$global_ref_platform,
     'cp'    =>\$param_create_platforms,
@@ -97,8 +101,9 @@ if($param_create_platforms && $param_delete_platforms) {
 ##############################################################################
 ##############################################################################
 ##### MAIN
-
+print "\n";
 if($param_delete_platforms) {
+    print "Deletion mode.\n";
     find(\&get_type_files, $current_dir);
     foreach my $platform (sort split $COMMA , $param_delete_platforms) {
         local $ENV{PLATFORM_TBD} = $platform;
@@ -108,24 +113,24 @@ if($param_delete_platforms) {
         }
         undef $ENV{PLATFORM_TBD} ;
     }
-    git_status();
 }
 
 if($param_create_platforms) {
     $orig_param_create_platforms = $param_create_platforms ;
     check_duplicates();
+    print "Creation mode.\n";
     foreach my $ref_platform (sort keys %h_create_platforms) {
-        print qq{\nreference     : $ref_platform\n};
+        #print qq{\nreference     : $ref_platform\n};
         local $ENV{REF_PLATFORM} = $ref_platform;
         local $ENV{variant}      = @{$h_create_platforms{$ref_platform}{variant}}[0];
-        print qq{variant       : $ENV{variant}\n};
+        #print qq{variant       : $ENV{variant}\n};
         find(\&getlist_template_files, $current_dir);
         foreach my $elem (sort keys %{$h_create_platforms{$ref_platform}} ) {
             next if($elem =~ m/^variant$/ixms);
             (my $display_elem = $elem) =~ s/\_/ /xms;
-            print "$display_elem :\n";
+            #print "$display_elem :\n";
             foreach my $new_platform (sort @{$h_create_platforms{$ref_platform}{$elem}} ) {
-                print "\t\t$new_platform\n";
+                #print "\t\t$new_platform\n";
                 create_new_platform($new_platform);
             }
         }
@@ -133,8 +138,9 @@ if($param_create_platforms) {
         undef $ENV{REF_PLATFORM};
         undef $ENV{variant};
     }
-    git_status();
 }
+
+git_status();
 
 print "END of $PROGRAM_NAME.\n\n";
 exit 0;
@@ -175,7 +181,6 @@ sub get_property_files {
     }
     close $file_handle or confess "ERROR : cannot close $file_handle : $ERRNO";
     if($flag==1) {
-        print "file to delete : $File::Find::name\n";
         unlink "$File::Find::name" or cluck "WARNING : cannot delete $File::Find::name : $ERRNO";
     }
     return;
@@ -254,7 +259,7 @@ sub getlist_template_files {
 sub create_new_platform {
     my ($this_new_platform) = @ARG ;
     foreach my $type ( sort keys %list_template_files ) {
-        print "\t\t- $type\n";
+        #print "\t\t- $type\n";
         foreach my $template_file ( sort @{$list_template_files{$type}} )  {
             create_property_file($this_new_platform, $template_file);
         }
